@@ -1,6 +1,5 @@
 pragma solidity >=0.7.0 <0.9.0;
 
-import "./2_Contract.sol";
 
 contract Init {
     event InitEvent(uint id, address _addr, uint amount, uint timestamp, bool odd);
@@ -17,10 +16,7 @@ contract Init {
     uint public blackCount;
     address public bcContract;
 
-
-
     mapping(address => uint) public values;
-
 
     function setBCContract(address _addr) public {
         bcContract = _addr;
@@ -55,7 +51,7 @@ contract Init {
         emit GambleInit(id, color, value, lastTimestamp, odd, msg.sender);
 
         uint newValue = callNextFunction(id, color, odd, value);
-        if(red) {
+        if(odd) {
             redCount++;
             emit PayFees(id, newValue);
             emit UpdateColorValue(color);
@@ -70,8 +66,7 @@ contract Init {
     function callNextFunction(uint _id, bytes32 color, bool odd, uint256 value) private returns(uint) {
         require(bcContract != 0x0000000000000000000000000000000000000000);
         BCContract bc = BCContract(bcContract);
-        //address _to = payable(address(bcContractAddress));
-        uint newValue = bc.gamble(_id,color,odd,lastTimestamp,value);
+        uint newValue = bc.gamble{value: values[msg.sender]}(_id,color,odd,lastTimestamp,value);
         values[msg.sender] += newValue;
         emit NewValue(id, msg.sender, newValue);
         return newValue;
