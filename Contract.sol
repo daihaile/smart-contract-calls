@@ -2,7 +2,6 @@ pragma solidity >=0.7.0 <0.9.0;
 
 
 contract Init {
-    event InitEvent(uint id, uint amount, uint timestamp, bool odd);
     event GambleInit(uint id, bytes32 color, uint amount, uint timestamp, bool odd, address sender);
     event PayFees(uint id, uint amount);
     event NewValue(uint id, address addr, uint newValue);
@@ -29,7 +28,8 @@ contract Init {
         return values[msg.sender];
     }
 
-    function gamble(bool red, BCContract _bc) public payable{
+    function gamble(uint ethAmount, bool red, BCContract _bc) public{
+        uint amount = ethAmount * 1e18;
         id++;
         lastTimestamp = block.timestamp;
         bool odd = true;
@@ -40,11 +40,12 @@ contract Init {
         if(red) {
             color = "red";
         }
-        uint value = values[msg.sender];
-        emit InitEvent(id, value, lastTimestamp, odd);
-        emit GambleInit(id, color, value, lastTimestamp, odd, msg.sender);
+        
+        values[msg.sender] -= amount;
+        require(values[msg.sender] > 0, "Not enough funds");
+        emit GambleInit(id, color, amount, lastTimestamp, odd, msg.sender);
 
-        (uint newValue) =  _bc.gamble{value: value}(id,color,odd,lastTimestamp);
+        (uint newValue) =  _bc.gamble{value: amount}(id,color,odd,lastTimestamp);
 
         values[msg.sender] += newValue;
         emit CallResponse(newValue);
