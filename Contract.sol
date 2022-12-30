@@ -1,14 +1,11 @@
 pragma solidity >=0.7.0 <0.9.0;
 
 
-contract Init {
-    event GambleInit(uint id, bytes32 color, uint amount, uint timestamp, bool odd, address sender);
-    event PayFees(uint id, uint amount);
-    event NewValue(uint id, address addr, uint newValue);
-    event UpdateColorValue(bytes32 color);
-    event Donate(address addr, uint amount);
+contract Gamble {
+    event GambleInit(uint id, bool isRed, uint amount, uint timestamp, bool odd, address sender, uint balance);
+    event NewBalance(uint id, address addr, uint newValue, uint balance);
+    event UpdateColorValue(uint id, bool isRed);
     event Deposit(address addr, uint amount);
-    event CallResponse(uint newValue1);
 
     uint public id;
     uint public lastTimestamp;
@@ -17,18 +14,13 @@ contract Init {
 
     mapping(address => uint) public values;
 
-    function donate() public payable returns (uint) {
-        emit Donate(msg.sender, msg.value);
-        return values[msg.sender];
-    }
-
     function deposit() public payable returns (uint) {
         values[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value);
         return values[msg.sender];
     }
 
-    function gamble(uint ethAmount, bool red, BCContract _bc) public{
+    function gamble(uint ethAmount, bool isRed, Calculate _calculate) public{
         uint amount = ethAmount * 1e18;
         id++;
         lastTimestamp = block.timestamp;
@@ -36,29 +28,19 @@ contract Init {
         if(lastTimestamp % 2 == 0) {
             odd = false;
         }
-        bytes32 color = "blue";
-        if(red) {
-            color = "red";
-        }
         
         values[msg.sender] -= amount;
         require(values[msg.sender] > 0, "Not enough funds");
-        emit GambleInit(id, color, amount, lastTimestamp, odd, msg.sender);
-
-        (uint newValue) =  _bc.gamble{value: amount}(id,color,odd,lastTimestamp);
-
+        emit GambleInit(id, isRed, amount, lastTimestamp, odd, msg.sender, values[msg.sender]);
+        (uint newValue) =  _calculate.calculate{value: amount}(id,isRed,odd,lastTimestamp);
         values[msg.sender] += newValue;
-        emit CallResponse(newValue);
-        emit NewValue(id, msg.sender, newValue);
-
+        emit NewBalance(id, msg.sender, newValue, values[msg.sender]);
         if(odd) {
             redCount++;
-            emit PayFees(id, newValue);
-            emit UpdateColorValue(color);
+            emit UpdateColorValue(id, isRed);
         }  else {
             blackCount++;
-            emit UpdateColorValue(color);
-            emit PayFees(id, newValue);
+            emit UpdateColorValue(id, !isRed);
         }
 
     }
@@ -67,8 +49,8 @@ contract Init {
     receive() external payable { }
 }
 
-contract BCContract {
-    event Gamble(bytes32 color, bool odd, uint lastTimestamp, uint256 newValue);
+contract Calculate {
+    event CalculateGamble(uint id, bool isRed, bool odd, uint lastTimestamp, uint256 newValue);
 
     uint public id;
     address public feeAddress;
@@ -88,17 +70,17 @@ contract BCContract {
         return feeAddress;
     }
 
-    function gamble(uint _id, bytes32 color, bool odd, uint lastTimestamp) public payable returns (uint) {
+    function calculate(uint _id, bool isRed, bool odd, uint lastTimestamp) public payable returns (uint) {
         uint newValue;
         id = _id;
-        if(odd && color == "red") {
+        if(odd && isRed) {
             newValue = msg.value + msg.value / 2;
         } else {
             newValue = msg.value / 2;
         }
         uint fee = msg.value / 10;
         newValue -= fee;
-        emit Gamble(color, odd, lastTimestamp, newValue);
+        emit CalculateGamble(_id, isRed, odd, lastTimestamp, newValue);
         (bool sent,) = msg.sender.call{value: newValue}("");
         require(sent, "Failed to send Ether back");
         address _feeCollector = payable(feeAddress);
@@ -109,7 +91,7 @@ contract BCContract {
 
 }
 
-contract EndContract{
+contract FeeCollector{
 
     address payable public owner;
 
