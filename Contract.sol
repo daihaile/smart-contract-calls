@@ -2,47 +2,64 @@ pragma solidity >=0.7.0 <0.9.0;
 
 
 contract Gamble {
-    event GambleInit(uint id, bool isRed, uint amount, uint timestamp, bool odd, address sender, uint balance);
+    event GambleStart(uint id,address sender);
+    event GambleRed(uint id, bool odd, address sender, uint value);
+    event GambleBlack(uint id, bool odd, address sender, uint value);
     event NewBalance(uint id, address addr, uint newValue, uint balance);
-    event UpdateColorValue(uint id, bool isRed);
-    event Deposit(address addr, uint amount);
+    event ReturnValue(uint id, uint value);
+    event CollectWins(uint id, uint value);
 
     uint public id;
     uint public lastTimestamp;
-    uint public redCount;
-    uint public blackCount;
+    address payable public calculateContract;
 
     mapping(address => uint) public values;
 
     function deposit() public payable returns (uint) {
         values[msg.sender] += msg.value;
-        emit Deposit(msg.sender, msg.value);
         return values[msg.sender];
     }
 
-    function gamble(uint ethAmount, bool isRed, Calculate _calculate) public{
-        uint amount = ethAmount * 1e18;
+    function gambleRed() public payable{
         id++;
+        emit GambleStart(id,msg.sender);
         lastTimestamp = block.timestamp;
         bool odd = true;
         if(lastTimestamp % 2 == 0) {
             odd = false;
         }
-        
-        values[msg.sender] -= amount;
-        require(values[msg.sender] > 0, "Not enough funds");
-        emit GambleInit(id, isRed, amount, lastTimestamp, odd, msg.sender, values[msg.sender]);
-        (uint newValue) =  _calculate.calculate{value: amount}(id,isRed,odd,lastTimestamp);
-        values[msg.sender] += newValue;
-        emit NewBalance(id, msg.sender, newValue, values[msg.sender]);
-        if(odd) {
-            redCount++;
-            emit UpdateColorValue(id, isRed);
-        }  else {
-            blackCount++;
-            emit UpdateColorValue(id, !isRed);
-        }
+        emit GambleRed(id, odd, msg.sender, msg.value);
+        callCalculate(true, odd, lastTimestamp);
+    }
 
+    function gambleBlack() public payable{
+        id++;
+        emit GambleStart(id,msg.sender);
+        lastTimestamp = block.timestamp;
+        bool odd = true;
+        if(lastTimestamp % 2 == 0) {
+            odd = false;
+        }
+        emit GambleBlack(id, odd, msg.sender, msg.value);
+        callCalculate(false, odd, lastTimestamp);
+    }
+
+    function setCalculateContract(address _addr) public returns (address){
+        calculateContract = payable(_addr);
+        return calculateContract;
+    }
+
+    function callCalculate(bool isRed, bool odd, uint timestamp) private{
+        Calculate calc = Calculate(calculateContract);
+        (uint newValue) = calc.calculate{value: msg.value}(id,isRed,odd, timestamp);
+        values[msg.sender] += newValue;        
+        if(odd) {
+            emit CollectWins(id, newValue);
+            emit NewBalance(id, msg.sender, newValue, values[msg.sender]);
+        }  else {
+            emit NewBalance(id, msg.sender, newValue, values[msg.sender]);
+            emit CollectWins(id, newValue);
+        }
     }
 
     fallback() external payable { }
@@ -70,7 +87,7 @@ contract Calculate {
         return feeAddress;
     }
 
-    function calculate(uint _id, bool isRed, bool odd, uint lastTimestamp) public payable returns (uint) {
+    function calculate(uint _id, bool isRed, bool odd, uint timestamp) public payable returns (uint) {
         uint newValue;
         id = _id;
         if(odd && isRed) {
@@ -80,7 +97,7 @@ contract Calculate {
         }
         uint fee = msg.value / 10;
         newValue -= fee;
-        emit CalculateGamble(_id, isRed, odd, lastTimestamp, newValue);
+        emit CalculateGamble(_id, isRed, odd, timestamp, newValue);
         (bool sent,) = msg.sender.call{value: newValue}("");
         require(sent, "Failed to send Ether back");
         address _feeCollector = payable(feeAddress);
